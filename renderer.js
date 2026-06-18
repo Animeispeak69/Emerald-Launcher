@@ -18,6 +18,13 @@ const modTypeSelect = document.getElementById('modTypeSelect');
 const modSearchBtn = document.getElementById('modSearchBtn');
 const modResults = document.getElementById('modResults');
 
+const controlsBtn = document.getElementById('controlsBtn');
+const importBtn = document.getElementById('importBtn');
+const settingsBtn = document.getElementById('settingsBtn');
+const controlsArea = document.getElementById('controlsArea');
+const importArea = document.getElementById('importArea');
+const instanceSettingsArea = document.getElementById('instanceSettingsArea');
+
 let manifest = null;
 let currentType = 'release';
 let selectedVersion = null;
@@ -212,18 +219,234 @@ newInstanceBtn.onclick = async () => {
   }
 };
 
+// Control Settings UI
+controlsBtn.onclick = async () => {
+  controlsArea.style.display = controlsArea.style.display === 'none' ? 'block' : 'none';
+  importArea.style.display = 'none';
+  instanceSettingsArea.style.display = 'none';
+  
+  if (controlsArea.style.display === 'block') {
+    const profiles = await window.api.listControlProfiles();
+    const content = document.getElementById('controlsContent');
+    content.innerHTML = '';
+
+    const profileSelect = document.createElement('select');
+    profiles.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      profileSelect.appendChild(opt);
+    });
+    profileSelect.onchange = async () => {
+      await window.api.setActiveProfile(profileSelect.value);
+      renderControlSettings(profileSelect.value);
+    };
+    content.appendChild(profileSelect);
+
+    const newProfileBtn = document.createElement('button');
+    newProfileBtn.textContent = 'New Profile';
+    newProfileBtn.onclick = async () => {
+      const name = prompt('Profile name:');
+      if (!name) return;
+      const profile = await window.api.saveControlProfile(name, {
+        keys: { forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', sneak: 'ShiftLeft', sprint: 'ControlLeft', attack: 'MouseButton1', use: 'MouseButton2', inventory: 'KeyE' },
+        gamepadEnabled: false
+      });
+      await renderInstances();
+      controlsBtn.click();
+    };
+    content.appendChild(newProfileBtn);
+
+    const hr = document.createElement('hr');
+    content.appendChild(hr);
+
+    if (profiles.length > 0) {
+      renderControlSettings(profiles[0].name);
+    }
+  }
+};
+
+async function renderControlSettings(profileName) {
+  const profile = await window.api.getControlProfile(profileName);
+  const content = document.getElementById('controlsContent');
+  const settingsDiv = content.querySelector('div.controlSettings') || document.createElement('div');
+  settingsDiv.className = 'controlSettings';
+  settingsDiv.innerHTML = '';
+
+  // Keyboard keybinds
+  const keyDiv = document.createElement('div');
+  keyDiv.innerHTML = '<h4>Keyboard Keybinds</h4>';
+  Object.entries(profile.keys || {}).forEach(([action, keyCode]) => {
+    const label = document.createElement('label');
+    label.innerHTML = `${action}: <input type="text" value="${keyCode}" data-action="${action}" class="keyInput" readonly />`;
+    label.style.display = 'block';
+    keyDiv.appendChild(label);
+  });
+  settingsDiv.appendChild(keyDiv);
+
+  // Gamepad toggle
+  const gpDiv = document.createElement('div');
+  gpDiv.innerHTML = `<label><input type="checkbox" id="gamepadToggle" ${profile.gamepadEnabled ? 'checked' : ''} /> Enable Gamepad</label>`;
+  document.getElementById('gamepadToggle').onchange = async (e) => {
+    profile.gamepadEnabled = e.target.checked;
+    await window.api.saveControlProfile(profileName, profile);
+  };
+  settingsDiv.appendChild(gpDiv);
+
+  // Save button
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = 'Save Profile';
+  saveBtn.onclick = async () => {
+    // Collect key values
+    const inputs = settingsDiv.querySelectorAll('.keyInput');
+    inputs.forEach(inp => {
+      profile.keys[inp.dataset.action] = inp.value;
+    });
+    await window.api.saveControlProfile(profileName, profile);
+    alert('Profile saved!');
+  };
+  settingsDiv.appendChild(saveBtn);
+
+  if (!content.querySelector('.controlSettings')) {
+    content.appendChild(settingsDiv);
+  }
+}
+
+// Import UI
+importBtn.onclick = async () => {
+  importArea.style.display = importArea.style.display === 'none' ? 'block' : 'none';
+  controlsArea.style.display = 'none';
+  instanceSettingsArea.style.display = 'none';
+
+  if (importArea.style.display === 'block') {
+    const content = document.getElementById('importContent');
+    content.innerHTML = '';
+    if (!selectedInstance) return content.innerHTML = 'Select an instance first';
+
+    const savesBtn = document.createElement('button');
+    savesBtn.textContent = 'Import Saves';
+    savesBtn.onclick = async () => {
+      const folder = await window.api.selectFolder();
+      if (!folder) return;
+      try {
+        const imported = await window.api.importSaves(folder, selectedInstance.id);
+        alert('Imported ' + imported.length + ' saves');
+      } catch (e) {
+        alert('Import failed: ' + e.message);
+      }
+    };
+    content.appendChild(savesBtn);
+
+    const rpBtn = document.createElement('button');
+    rpBtn.textContent = 'Import Resource Packs';
+    rpBtn.onclick = async () => {
+      const folder = await window.api.selectFolder();
+      if (!folder) return;
+      try {
+        const imported = await window.api.importResourcepacks(folder, selectedInstance.id);
+        alert('Imported ' + imported.length + ' resource packs');
+      } catch (e) {
+        alert('Import failed: ' + e.message);
+      }
+    };
+    content.appendChild(rpBtn);
+
+    const shaderBtn = document.createElement('button');
+    shaderBtn.textContent = 'Import Shaders';
+    shaderBtn.onclick = async () => {
+      const folder = await window.api.selectFolder();
+      if (!folder) return;
+      try {
+        const imported = await window.api.importShaderpacks(folder, selectedInstance.id);
+        alert('Imported ' + imported.length + ' shaders');
+      } catch (e) {
+        alert('Import failed: ' + e.message);
+      }
+    };
+    content.appendChild(shaderBtn);
+  }
+};
+
+// Instance Settings UI
+settingsBtn.onclick = async () => {
+  instanceSettingsArea.style.display = instanceSettingsArea.style.display === 'none' ? 'block' : 'none';
+  controlsArea.style.display = 'none';
+  importArea.style.display = 'none';
+
+  if (instanceSettingsArea.style.display === 'block') {
+    const content = document.getElementById('instanceSettingsContent');
+    content.innerHTML = '';
+    if (!selectedInstance) return content.innerHTML = 'Select an instance first';
+
+    const inst = await window.api.getInstance(selectedInstance.id);
+
+    // JVM Arguments
+    const jvmDiv = document.createElement('div');
+    jvmDiv.innerHTML = `<label>JVM Arguments:<br/><textarea id="jvmArgs" style="width:100%; height:60px;">${inst.jvmArgs}</textarea></label>`;
+    content.appendChild(jvmDiv);
+
+    // Renderer
+    const rendererDiv = document.createElement('div');
+    rendererDiv.innerHTML = `
+      <label>Renderer:
+        <select id="rendererSelect">
+          <option value="default" ${inst.renderer === 'default' ? 'selected' : ''}>Default</option>
+          <option value="opengl" ${inst.renderer === 'opengl' ? 'selected' : ''}>OpenGL</option>
+          <option value="vulkan" ${inst.renderer === 'vulkan' ? 'selected' : ''}>Vulkan</option>
+        </select>
+      </label>
+    `;
+    content.appendChild(rendererDiv);
+
+    // Graphics Quality
+    const gfxDiv = document.createElement('div');
+    gfxDiv.innerHTML = `
+      <label>Graphics Quality:
+        <select id="graphicsSelect">
+          <option value="fast" ${inst.graphicsQuality === 'fast' ? 'selected' : ''}>Fast</option>
+          <option value="fancy" ${inst.graphicsQuality === 'fancy' ? 'selected' : ''}>Fancy</option>
+        </select>
+      </label>
+    `;
+    content.appendChild(gfxDiv);
+
+    // Render Distance
+    const rdDiv = document.createElement('div');
+    rdDiv.innerHTML = `
+      <label>Render Distance: 
+        <input type="number" id="renderDistance" min="2" max="32" value="${inst.renderDistance}" />
+      </label>
+    `;
+    content.appendChild(rdDiv);
+
+    // Save button
+    const saveBtn = document.createElement('button');
+    saveBtn.textContent = 'Save Instance Settings';
+    saveBtn.onclick = async () => {
+      const updates = {
+        jvmArgs: document.getElementById('jvmArgs').value,
+        renderer: document.getElementById('rendererSelect').value,
+        graphicsQuality: document.getElementById('graphicsSelect').value,
+        renderDistance: parseInt(document.getElementById('renderDistance').value)
+      };
+      await window.api.updateInstance(selectedInstance.id, updates);
+      alert('Instance settings saved!');
+      renderInstances();
+    };
+    content.appendChild(saveBtn);
+  }
+};
+
 // Modrinth search with filters
 modSearchBtn.onclick = async () => {
   const q = modSearchInput.value.trim();
   if (!q) return alert('Enter a search term');
 
-  // Collect selected loaders
   const selectedLoaders = [];
   Object.entries(filterLoaders).forEach(([k, el]) => {
     if (el.checked) selectedLoaders.push(k);
   });
 
-  // Collect selected categories
   const selectedCategories = [];
   Object.entries(filterCategories).forEach(([k, el]) => {
     if (el.checked) selectedCategories.push(k);

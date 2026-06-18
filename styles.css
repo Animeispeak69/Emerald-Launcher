@@ -20,7 +20,7 @@ header h1 {
 
 #mainLayout {
   display: flex;
-  height: calc(100vh - 100px);
+  height: calc(100vh - 150px);
 }
 
 #sidebar {
@@ -98,13 +98,16 @@ button:disabled {
 
 input[type="text"],
 input[type="search"],
-select {
+input[type="number"],
+select,
+textarea {
   padding: 8px;
   background: rgba(255,255,255,0.06);
   border: 1px solid rgba(255,255,255,0.1);
   color: inherit;
   border-radius: 6px;
   margin-right: 8px;
+  font-family: inherit;
 }
 
 #versionsHorizontal {
@@ -240,8 +243,45 @@ select {
 
 footer {
   padding: 12px 16px;
-  opacity: 0.8;
+  display: flex;
+  gap: 12px;
+  align-items: center;
   background: #0b1020;
-  text-align: center;
   border-top: 1px solid #1a2844;
+}
+
+footer button {
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+footer small {
+  margin-left: auto;
+  opacity: 0.8;
+}
+
+#controlsArea,
+#importArea,
+#instanceSettingsArea {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.1);
+  padding: 16px;
+  border-radius: 8px;
+}
+
+#controlsContent,
+#importContent,
+#instanceSettingsContent {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.controlSettings label {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.keyInput {
+  width: 100px;
 }

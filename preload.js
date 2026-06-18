@@ -12,6 +12,19 @@ contextBridge.exposeInMainWorld('api', {
   updateInstance: (instanceId, updates) => ipcRenderer.invoke('update-instance', instanceId, updates),
   getInstancePath: (instanceId) => ipcRenderer.invoke('get-instance-path', instanceId),
 
+  // Control profiles
+  listControlProfiles: () => ipcRenderer.invoke('list-control-profiles'),
+  getControlProfile: (name) => ipcRenderer.invoke('get-control-profile', name),
+  saveControlProfile: (name, data) => ipcRenderer.invoke('save-control-profile', name, data),
+  setActiveProfile: (name) => ipcRenderer.invoke('set-active-profile', name),
+  deleteControlProfile: (name) => ipcRenderer.invoke('delete-control-profile', name),
+
+  // Import data
+  importSaves: (sourcePath, instanceId) => ipcRenderer.invoke('import-saves', sourcePath, instanceId),
+  importResourcepacks: (sourcePath, instanceId) => ipcRenderer.invoke('import-resourcepacks', sourcePath, instanceId),
+  importShaderpacks: (sourcePath, instanceId) => ipcRenderer.invoke('import-shaderpacks', sourcePath, instanceId),
+  selectFolder: () => ipcRenderer.invoke('select-folder'),
+
   // Java manager
   listJavas: () => ipcRenderer.invoke('list-javas'),
   addJava: (name, path) => ipcRenderer.invoke('add-java', name, path),

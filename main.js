@@ -10,6 +10,7 @@ const { spawn } = require('child_process');
 const USER_DATA = path.join(app.getPath('userData'));
 const STORAGE_FILE = path.join(USER_DATA, 'emerald_store.json');
 const INSTANCES_DIR = path.join(USER_DATA, '.emerald', 'instances');
+const CONTROLS_FILE = path.join(USER_DATA, '.emerald', 'controls.json');
 
 function ensureStorage() {
   if (!fs.existsSync(USER_DATA)) fs.mkdirSync(USER_DATA, { recursive: true });
@@ -25,6 +26,55 @@ function readStorage() {
 function writeStorage(obj) {
   ensureStorage();
   fs.writeFileSync(STORAGE_FILE, JSON.stringify(obj, null, 2));
+}
+
+function ensureControls() {
+  const dir = path.dirname(CONTROLS_FILE);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(CONTROLS_FILE)) {
+    const defaults = {
+      profiles: [
+        {
+          name: 'Default',
+          keys: {
+            forward: 'KeyW',
+            back: 'KeyS',
+            left: 'KeyA',
+            right: 'KeyD',
+            jump: 'Space',
+            sneak: 'ShiftLeft',
+            sprint: 'ControlLeft',
+            attack: 'MouseButton1',
+            use: 'MouseButton2',
+            inventory: 'KeyE'
+          },
+          gamepadEnabled: false,
+          gamepadAxes: {
+            leftStickX: 0,
+            leftStickY: 1,
+            rightStickX: 2,
+            rightStickY: 3
+          },
+          gamepadButtons: {
+            jump: 0,
+            attack: 1,
+            use: 2
+          }
+        }
+      ],
+      active: 'Default'
+    };
+    fs.writeFileSync(CONTROLS_FILE, JSON.stringify(defaults, null, 2));
+  }
+}
+
+function readControls() {
+  ensureControls();
+  return JSON.parse(fs.readFileSync(CONTROLS_FILE, 'utf8'));
+}
+function writeControls(obj) {
+  ensureControls();
+  fs.writeFileSync(CONTROLS_FILE, JSON.stringify(obj, null, 2));
 }
 
 function createWindow() {
@@ -145,6 +195,8 @@ ipcMain.handle('create-instance', async (_, name, mcVersion, loader) => {
   fs.mkdirSync(path.join(baseDir, 'versions'), { recursive: true });
   fs.mkdirSync(path.join(baseDir, 'libraries'), { recursive: true });
   fs.mkdirSync(path.join(baseDir, 'natives'), { recursive: true });
+  fs.mkdirSync(path.join(baseDir, 'saves'), { recursive: true });
+  fs.mkdirSync(path.join(baseDir, 'options'), { recursive: true });
 
   const config = {
     id: instanceId,
@@ -153,7 +205,12 @@ ipcMain.handle('create-instance', async (_, name, mcVersion, loader) => {
     loader,
     createdAt: new Date().toISOString(),
     selectedJavaIdx: -1,
-    selectedAccountId: null
+    selectedAccountId: null,
+    jvmArgs: '-Xmx2G -XX:+UseG1GC -XX:MaxGCPauseMillis=130 -XX:+UnlockDiagnosticVMOptions -XX:G1SummarizeRSetStatsPeriod=1000000 -XX:G1HeapRegionSize=16M',
+    renderer: 'default',
+    graphicsQuality: 'fancy',
+    renderDistance: 12,
+    controlProfile: 'Default'
   };
 
   fs.writeFileSync(path.join(baseDir, 'instance.json'), JSON.stringify(config, null, 2));
@@ -185,6 +242,131 @@ ipcMain.handle('get-instance-path', async (_, instanceId) => {
   return path.join(INSTANCES_DIR, instanceId);
 });
 
+// Control profiles
+ipcMain.handle('list-control-profiles', async () => {
+  const controls = readControls();
+  return controls.profiles || [];
+});
+
+ipcMain.handle('get-control-profile', async (_, profileName) => {
+  const controls = readControls();
+  const profile = (controls.profiles || []).find(p => p.name === profileName);
+  if (!profile) throw new Error('Control profile not found: ' + profileName);
+  return profile;
+});
+
+ipcMain.handle('save-control-profile', async (_, profileName, profileData) => {
+  const controls = readControls();
+  let profile = (controls.profiles || []).find(p => p.name === profileName);
+  if (!profile) {
+    profile = { name: profileName, ...profileData };
+    controls.profiles.push(profile);
+  } else {
+    Object.assign(profile, profileData);
+  }
+  writeControls(controls);
+  return profile;
+});
+
+ipcMain.handle('set-active-profile', async (_, profileName) => {
+  const controls = readControls();
+  controls.active = profileName;
+  writeControls(controls);
+  return controls;
+});
+
+ipcMain.handle('delete-control-profile', async (_, profileName) => {
+  const controls = readControls();
+  controls.profiles = (controls.profiles || []).filter(p => p.name !== profileName);
+  writeControls(controls);
+  return controls;
+});
+
+// Import saves / data
+ipcMain.handle('import-saves', async (_, sourcePath, instanceId) => {
+  const destPath = path.join(INSTANCES_DIR, instanceId, 'saves');
+  if (!fs.existsSync(destPath)) fs.mkdirSync(destPath, { recursive: true });
+  
+  // Copy all .zip files (world backups) and world directories
+  const items = fs.readdirSync(sourcePath);
+  const imported = [];
+  for (const item of items) {
+    const src = path.join(sourcePath, item);
+    const stat = fs.statSync(src);
+    if (stat.isDirectory() || item.endsWith('.zip')) {
+      const dest = path.join(destPath, item);
+      if (!fs.existsSync(dest)) {
+        // Simple copy: for directories use recursive copy
+        if (stat.isDirectory()) {
+          const copyDir = (src, dest) => {
+            if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+            fs.readdirSync(src).forEach(f => {
+              const srcFile = path.join(src, f);
+              const destFile = path.join(dest, f);
+              if (fs.statSync(srcFile).isDirectory()) {
+                copyDir(srcFile, destFile);
+              } else {
+                fs.copyFileSync(srcFile, destFile);
+              }
+            });
+          };
+          copyDir(src, dest);
+        } else {
+          fs.copyFileSync(src, dest);
+        }
+        imported.push(item);
+      }
+    }
+  }
+  return imported;
+});
+
+ipcMain.handle('import-resourcepacks', async (_, sourcePath, instanceId) => {
+  const destPath = path.join(INSTANCES_DIR, instanceId, 'resourcepacks');
+  if (!fs.existsSync(destPath)) fs.mkdirSync(destPath, { recursive: true });
+  
+  const items = fs.readdirSync(sourcePath);
+  const imported = [];
+  for (const item of items) {
+    if (item.endsWith('.zip') || item.endsWith('.jar')) {
+      const src = path.join(sourcePath, item);
+      const dest = path.join(destPath, item);
+      if (!fs.existsSync(dest)) {
+        fs.copyFileSync(src, dest);
+        imported.push(item);
+      }
+    }
+  }
+  return imported;
+});
+
+ipcMain.handle('import-shaderpacks', async (_, sourcePath, instanceId) => {
+  const destPath = path.join(INSTANCES_DIR, instanceId, 'shaderpacks');
+  if (!fs.existsSync(destPath)) fs.mkdirSync(destPath, { recursive: true });
+  
+  const items = fs.readdirSync(sourcePath);
+  const imported = [];
+  for (const item of items) {
+    if (item.endsWith('.zip')) {
+      const src = path.join(sourcePath, item);
+      const dest = path.join(destPath, item);
+      if (!fs.existsSync(dest)) {
+        fs.copyFileSync(src, dest);
+        imported.push(item);
+      }
+    }
+  }
+  return imported;
+});
+
+ipcMain.handle('select-folder', async () => {
+  const res = await dialog.showOpenDialog({
+    properties: ['openDirectory']
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  return res.filePaths[0];
+});
+
 // Java selection & management
 ipcMain.handle('list-javas', async () => {
   const store = readStorage();
@@ -214,7 +396,7 @@ ipcMain.handle('select-java-dialog', async () => {
   return res.filePaths[0];
 });
 
-// Microsoft device-code OAuth -> Xbox -> XSTS -> Minecraft token
+// Microsoft device-code OAuth
 const DEFAULT_CLIENT_ID = '00000000402b5328';
 
 ipcMain.handle('start-ms-device-auth', async (_, clientId) => {
@@ -261,9 +443,7 @@ ipcMain.handle('poll-ms-device-token', async (_, ) => {
     let profile = null;
     try {
       profile = await fetchJson('https://api.minecraftservices.com/minecraft/profile', { headers: { Authorization: `Bearer ${mc.access_token}` } });
-    } catch (e) {
-      // no profile if user doesn't own the game
-    }
+    } catch (e) {}
 
     const ent = await fetchJson('https://api.minecraftservices.com/entitlements/mcstore', { headers: { Authorization: `Bearer ${mc.access_token}` } }).catch(() => ({ items: [] }));
 
@@ -310,8 +490,6 @@ function buildModrinthQuery(query, filters = {}) {
   if (filters.categories && filters.categories.length > 0) {
     q += `&facets=["categories:[${filters.categories.map(c => '"' + c + '"').join(',')}]"]`;
   }
-  // Modrinth facets: note that multiple facet filters need special formatting
-  // For now, simplified: loaders and categories
   return q;
 }
 
@@ -370,7 +548,6 @@ ipcMain.handle('modrinth-download-modpack', async (_, versionId, instanceId) => 
   return downloaded;
 });
 
-// Modrinth: download shaders
 ipcMain.handle('modrinth-download-shader', async (_, versionId, fileIndex, instanceId) => {
   const ver = await fetchJson(`https://api.modrinth.com/v2/version/${encodeURIComponent(versionId)}`);
   if (!ver || !ver.files || ver.files.length === 0) throw new Error('Shader version has no files');
@@ -383,7 +560,6 @@ ipcMain.handle('modrinth-download-shader', async (_, versionId, fileIndex, insta
   return dest;
 });
 
-// Modrinth: download resource pack
 ipcMain.handle('modrinth-download-resourcepack', async (_, versionId, fileIndex, instanceId) => {
   const ver = await fetchJson(`https://api.modrinth.com/v2/version/${encodeURIComponent(versionId)}`);
   if (!ver || !ver.files || ver.files.length === 0) throw new Error('Resource pack version has no files');

@@ -1,39 +1,35 @@
 # Emerald Launcher
 
-This repository contains a minimal Electron-based Minecraft Java launcher scaffold called "Emerald Launcher".
+This repository contains an Electron-based Minecraft Java launcher scaffold called "Emerald Launcher".
 
-Features
-- Fetches the official Mojang version_manifest.json and lists official versions.
-- Filter by type: release, snapshot, old_alpha, old_beta.
-- Horizontal (sideways) UI for browsing versions.
-- Download the client jar for a version into a local application data folder.
-- Very simple launch hook: you may launch Java with a downloaded jar if you provide a valid username and access token.
+What's new in this update
+- Microsoft sign-in (device code flow) implemented in the main process: start device sign-in, poll for token, exchange to Xbox/XSTS, then obtain Minecraft access token.
+- Account storage in user data (emerald_store.json). You can view and log out accounts inside the app.
+- Java runtime manager: add multiple named Java runtimes (Java 7/8/11/17/21/25 etc) and select them for launching.
+- UI improvements: right-side column for accounts and Java runtimes, horizontal (sideways) version list remains.
 
-Important notes and limitations
-- This is a scaffold/demonstration. It does not implement full authentication (do not paste credentials here unless you understand the risk). To actually obtain a valid access token you must use the official login flow (Mojang/Microsoft) or another launcher that supports auth.
-- Launching requires a valid Minecraft access token and a proper Java runtime. Use this only if you know where your Java executable is.
-- The launcher downloads official files directly from Mojang endpoints.
+Important security & ownership notes
+- You must sign in with a valid Microsoft account. This code implements the OAuth device-code flow which prompts you to visit a Microsoft URL and paste a code.
+- Owning Minecraft: If the account does not own Minecraft, launching will likely fail. This launcher does NOT bypass purchase/ownership checks — it queries Minecraft services entitlements. You cannot legally play without owning the game.
+- Client ID: The code uses a commonly used public client id by default (00000000402b5328). For production, register your own application in Azure and replace the client id in main.js.
 
-Getting started (development)
-1. Install dependencies:
+Limitations
+- The launcher currently implements a simple JVM -jar launch. It does NOT implement full library, natives, or assets installation required for all versions. For complete compatibility you'll need a full implementation that:
+  - Downloads libraries and native dependencies
+  - Extracts natives to a natives folder
+  - Builds the correct classpath and launches the main class with proper args
+- The Microsoft flow is device-code based for simplicity. You can extend this to PKCE/redirect flows for better UX.
 
-   npm install
+How to use
+1. npm install
+2. npm start
+3. Click "Sign in with Microsoft" and follow the device-code instructions shown.
+4. Add Java runtimes using "Add Java..." (point to the java executable for each version you have installed). Give them a name such as "Java 17".
+5. Download a client jar for a version, then Launch with a selected account and Java runtime.
 
-2. Start the app:
+If you want I can:
+- Implement full version launch (libraries + natives + assets) for releases first.
+- Replace device-code with a PKCE redirect flow using a registered app.
+- Add a proper modal UI for login and progress indicators instead of prompts/alerts.
 
-   npm start
-
-Usage
-- Click the type buttons (release / snapshot / old_alpha / old_beta) to switch lists.
-- Versions appear in a horizontal (sideways) scrollable list.
-- Click a version to view details. If a client jar is available you can download it.
-- To launch: select your Java executable ("Select Java") and provide your username and access token when prompted. This launcher does not perform authentication for you.
-
-Security & legal
-- This project is for educational purposes. Respect Mojang/Microsoft terms of service and do not distribute proprietary assets without permission.
-
-Contributing
-- Feel free to open issues or PRs to improve functionality (authentication flows, library handling, better process management, native libraries extraction, etc.).
-
-License
-- MIT
+Again: I will not and cannot help bypass Minecraft ownership checks. You must own the game to play.

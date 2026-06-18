@@ -16,10 +16,13 @@ header h1 {
 
 #controls {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   padding: 12px 16px;
 }
+
+.leftControls { flex: 1; }
+.rightControls { width: 360px; }
 
 .types button {
   margin-right: 8px;
@@ -80,3 +83,8 @@ footer {
   padding: 12px 16px;
   opacity: 0.8;
 }
+
+/* Right column */
+#accountArea { margin-bottom: 12px; }
+.accountEntry { margin-top: 6px; }
+.javaEntry { margin-top: 6px; }

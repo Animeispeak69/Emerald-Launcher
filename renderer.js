@@ -3,12 +3,16 @@ const versionsHorizontal = document.getElementById('versionsHorizontal');
 const selectedTitle = document.getElementById('selectedTitle');
 const detailBody = document.getElementById('detailBody');
 const refreshBtn = document.getElementById('refresh');
-const selectJavaBtn = document.getElementById('selectJava');
-const javaPathSpan = document.getElementById('javaPath');
+
+const msLoginBtn = document.getElementById('msLogin');
+const accountsList = document.getElementById('accountsList');
+
+const javaList = document.getElementById('javaList');
+const addJavaBtn = document.getElementById('addJavaBtn');
 
 let manifest = null;
 let currentType = 'release';
-let javaPath = '';
+let selectedVersion = null;
 
 async function loadManifest() {
   manifest = await window.api.getVersionManifest();
@@ -45,7 +49,6 @@ function renderVersions() {
   });
 }
 
-let selectedVersion = null;
 async function selectVersion(v) {
   selectedVersion = v;
   selectedTitle.textContent = `${v.id} — ${v.type}`;
@@ -84,26 +87,35 @@ async function selectVersion(v) {
     html.appendChild(dl);
 
     const launchBtn = document.createElement('button');
-    launchBtn.textContent = 'Launch (requires token)';
+    launchBtn.textContent = 'Launch (select java & account)';
     launchBtn.onclick = async () => {
-      const username = prompt('Minecraft username (or profile name):');
-      const token = prompt('Access token (use official login to obtain token):');
-      if (!username || !token) return alert('Username and token required');
-      // compute jar path
-      const jarPath = `${window.processUserData}/${'.emerald/versions'}/${verJson.id}/${verJson.id}.jar`;
-      // Instead of computing path in renderer, we'll ask user to select jar if not downloaded
-      const confirmed = confirm('If you already downloaded the client jar, press OK to select it; otherwise press Cancel and download first.');
-      let jarFilePath = '';
-      if (confirmed) {
-        // open file dialog via hidden input is not available, so instruct user
-        jarFilePath = prompt('Paste full path to jar file:');
-      } else {
-        return alert('Download the client jar first using "Download client jar"');
+      // choose account
+      const accounts = await window.api.listAccounts();
+      if (!accounts.length) return alert('No signed-in accounts. Sign in with Microsoft first.');
+      const idx = parseInt(prompt('Enter account index to use (0..' + (accounts.length - 1) + ')'));
+      const account = accounts[idx];
+      if (!account) return alert('Invalid account');
+
+      // check ownership
+      if (!account.entitlements || account.entitlements.length === 0) {
+        const proceed = confirm('This account does not appear to own Minecraft. You can still log in, but launching the game will likely fail. Continue?');
+        if (!proceed) return;
       }
-      if (!javaPath) return alert('Select Java first');
+
+      // choose java
+      const javas = await window.api.listJavas();
+      if (!javas.length) return alert('No Java runtimes configured. Add one in the Java Runtimes area.');
+      const jidx = parseInt(prompt('Enter java index to use (0..' + (javas.length - 1) + ')'));
+      const javaEntry = javas[jidx];
+      if (!javaEntry) return alert('Invalid java selection');
+
+      // choose jar
+      const jarPath = prompt('Paste full path to downloaded client jar for this version (download first)');
+      if (!jarPath) return alert('Jar required');
+
       try {
-        await window.api.launchJava(javaPath, verJson.id, jarFilePath, username, token);
-        alert('Launch requested. Check Java output console.');
+        await window.api.launchJava(javaEntry.path, verJson.id, jarPath, account.mc_profile ? account.mc_profile.name : 'MCUser', account.mc_token);
+        alert('Launch requested. Check console for Java output.');
       } catch (e) {
         alert('Launch failed: ' + e.message);
       }
@@ -117,21 +129,76 @@ async function selectVersion(v) {
 
 refreshBtn.onclick = () => loadManifest();
 
-selectJavaBtn.onclick = async () => {
-  const p = await window.api.selectJava();
-  if (p) {
-    javaPath = p;
-    javaPathSpan.textContent = p;
+// Microsoft auth flows
+msLoginBtn.onclick = async () => {
+  try {
+    const resp = await window.api.startMsDeviceAuth();
+    // resp.message contains instructions for user
+    alert('Device sign-in started:\n' + resp.message);
+
+    // start polling in background
+    const poll = setInterval(async () => {
+      try {
+        const result = await window.api.pollMsDeviceToken();
+        clearInterval(poll);
+        alert('Signed in. ownsMinecraft=' + result.ownsMinecraft + (result.account.mc_profile ? '\nProfile: ' + result.account.mc_profile.name : ''));
+        renderAccounts();
+      } catch (e) {
+        // if authorization_pending or slow_down, ignore; otherwise show
+        if (e && e.message && (e.message.includes('authorization_pending') || e.message.includes('authorization_pending') || e.message.includes('slow_down'))) {
+          // keep polling
+        } else {
+          // stop and show error
+          clearInterval(poll);
+          alert('Auth error: ' + (e.message || e));
+        }
+      }
+    }, 3000);
+  } catch (e) {
+    alert('Failed to start device auth: ' + e.message);
   }
 };
 
-// expose userData path for renderer convenience (very small helper)
-window.processUserData = (function () {
-  try {
-    return require('electron').app.getPath('userData');
-  } catch (e) {
-    return '';
-  }
-})();
+async function renderAccounts() {
+  const accounts = await window.api.listAccounts();
+  accountsList.innerHTML = '';
+  accounts.forEach((a, i) => {
+    const d = document.createElement('div');
+    d.className = 'accountEntry';
+    d.innerHTML = `<strong>${a.mc_profile ? a.mc_profile.name : a.id}</strong> ${a.mc_profile ? '(owns Minecraft)' : '(no profile)'} <button data-idx="${i}">Logout</button>`;
+    d.querySelector('button').onclick = async (e) => {
+      await window.api.logoutAccount(a.id);
+      renderAccounts();
+    };
+    accountsList.appendChild(d);
+  });
+}
 
+// Java manager UI
+async function renderJavas() {
+  const javas = await window.api.listJavas();
+  javaList.innerHTML = '';
+  javas.forEach((j, i) => {
+    const div = document.createElement('div');
+    div.className = 'javaEntry';
+    div.innerHTML = `<span>${i}: ${j.name} — ${j.path}</span> <button data-idx="${i}">Remove</button>`;
+    div.querySelector('button').onclick = async () => {
+      await window.api.removeJava(i);
+      renderJavas();
+    };
+    javaList.appendChild(div);
+  });
+}
+
+addJavaBtn.onclick = async () => {
+  const p = await window.api.selectJavaDialog();
+  if (!p) return;
+  const name = prompt('Name for this Java runtime (e.g. Java 17, Java 21):') || p;
+  await window.api.addJava(name, p);
+  renderJavas();
+};
+
+// initial
 loadManifest();
+renderAccounts();
+renderJavas();

@@ -14,11 +14,24 @@
       </header>
 
       <section id="controls">
-        <div class="types" id="typeButtons"></div>
-        <div class="actions">
-          <button id="refresh">Refresh versions</button>
-          <button id="selectJava">Select Java</button>
-          <span id="javaPath"></span>
+        <div class="leftControls">
+          <div class="types" id="typeButtons"></div>
+          <div class="actions">
+            <button id="refresh">Refresh versions</button>
+          </div>
+        </div>
+
+        <div class="rightControls">
+          <div id="accountArea">
+            <button id="msLogin">Sign in with Microsoft</button>
+            <div id="accountsList"></div>
+          </div>
+
+          <div id="javaArea">
+            <h4>Java Runtimes</h4>
+            <div id="javaList"></div>
+            <button id="addJavaBtn">Add Java...</button>
+          </div>
         </div>
       </section>
 
@@ -32,7 +45,7 @@
       </section>
 
       <footer>
-        <small>Shows official versions from Mojang. For launching you'll need a valid Minecraft account token.</small>
+        <small>Shows official versions from Mojang. For launching you'll need a valid Minecraft account token and a Java runtime.</small>
       </footer>
     </div>
 

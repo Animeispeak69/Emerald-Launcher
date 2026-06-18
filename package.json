@@ -1,0 +1,14 @@
+{
+  "name": "emerald-launcher",
+  "version": "0.1.0",
+  "description": "Minimal Electron-based Minecraft Java launcher scaffold (official versions, horizontal UI)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "author": "Animeispeak69",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^26.0.0"
+  }
+}

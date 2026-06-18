@@ -1,3 +1,7 @@
+* {
+  box-sizing: border-box;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
   margin: 0;
@@ -14,82 +18,230 @@ header h1 {
   margin: 0;
 }
 
-#controls {
+#mainLayout {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding: 12px 16px;
+  height: calc(100vh - 100px);
 }
 
-.leftControls { flex: 1; }
-.rightControls { width: 360px; }
+#sidebar {
+  width: 300px;
+  background: #0f1425;
+  border-right: 1px solid #1a2844;
+  padding: 16px;
+  overflow-y: auto;
+}
 
-.types button {
+#sidebar section {
+  margin-bottom: 20px;
+}
+
+#sidebar h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 14px;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+#content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+#content section {
+  margin-bottom: 30px;
+}
+
+#content h2 {
+  margin-top: 0;
+}
+
+.types button,
+#modTypeSelect {
   margin-right: 8px;
   padding: 8px 12px;
   background: rgba(255,255,255,0.06);
-  border: none;
+  border: 1px solid rgba(255,255,255,0.1);
   color: inherit;
   cursor: pointer;
   border-radius: 6px;
 }
+
 .types button.active {
   background: rgba(255,255,255,0.12);
   font-weight: 600;
 }
 
-.actions button {
-  margin-left: 8px;
+.types button:hover,
+#modTypeSelect:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+button {
   padding: 8px 12px;
-  border-radius: 6px;
-  border: none;
+  background: rgba(14, 107, 90, 0.6);
+  border: 1px solid rgba(14, 107, 90, 1);
+  color: inherit;
   cursor: pointer;
+  border-radius: 6px;
 }
 
-#versionArea {
-  padding: 12px 16px;
+button:hover {
+  background: rgba(14, 107, 90, 0.8);
 }
 
-.horizontalList {
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+input[type="text"],
+input[type="search"],
+select {
+  padding: 8px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: inherit;
+  border-radius: 6px;
+  margin-right: 8px;
+}
+
+#versionsHorizontal {
   display: flex;
   gap: 12px;
   overflow-x: auto;
-  padding: 12px 6px;
+  padding: 12px 0;
   align-items: flex-start;
 }
 
 .versionCard {
-  min-width: 220px;
+  min-width: 200px;
   padding: 12px;
   background: rgba(255,255,255,0.03);
   border-radius: 8px;
   cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.versionCard:hover {
+  transform: translateY(-4px);
+  border-color: rgba(14, 107, 90, 0.5);
+  transition: 0.15s ease;
+}
+
+.verId {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.verDate {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+#filtersSection {
+  background: rgba(255,255,255,0.02);
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+#filtersSection label {
+  display: inline-block;
+  margin-right: 16px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+#filtersSection input[type="checkbox"] {
+  margin-right: 6px;
+}
+
+#searchSection {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+#searchSection input {
+  flex: 1;
+}
+
+.modResultsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.modCard {
+  background: rgba(255,255,255,0.03);
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.05);
   display: flex;
   flex-direction: column;
 }
 
-.versionCard:hover { transform: translateY(-4px); transition: 0.15s ease; }
-
-#details {
-  padding: 12px 16px;
+.modCard strong {
+  margin-bottom: 8px;
 }
 
-#detailBody button {
-  margin-right: 8px;
-  margin-top: 8px;
+.modMeta {
+  font-size: 12px;
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+
+.modDesc {
+  opacity: 0.8;
+  font-size: 13px;
+  margin-bottom: 8px;
+  flex: 1;
+  max-height: 4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.modCard button {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+.accountEntry,
+.javaEntry,
+.instanceEntry {
+  background: rgba(255,255,255,0.03);
+  padding: 8px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: 0.15s ease;
+}
+
+.accountEntry:hover,
+.javaEntry:hover,
+.instanceEntry:hover {
+  background: rgba(255,255,255,0.06);
+}
+
+.instanceEntry.active {
+  background: rgba(14, 107, 90, 0.3);
+  border-color: rgba(14, 107, 90, 0.6);
+}
+
+.accountEntry button,
+.javaEntry button {
+  padding: 4px 8px;
+  font-size: 12px;
+  float: right;
 }
 
 footer {
   padding: 12px 16px;
   opacity: 0.8;
+  background: #0b1020;
+  text-align: center;
+  border-top: 1px solid #1a2844;
 }
-
-/* Right column */
-#accountArea { margin-bottom: 12px; }
-.accountEntry { margin-top: 6px; }
-.javaEntry { margin-top: 6px; }
-
-/* Mods */
-#modArea { margin-top: 12px; }
-.modCard { background: rgba(255,255,255,0.03); padding: 8px; border-radius: 6px; margin-top: 8px; }
-.modDesc { opacity: 0.8; font-size: 12px; max-height: 3em; overflow: hidden; }

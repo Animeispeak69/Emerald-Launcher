@@ -4,8 +4,13 @@ contextBridge.exposeInMainWorld('api', {
   getVersionManifest: () => ipcRenderer.invoke('get-version-manifest'),
   getVersionJson: (url) => ipcRenderer.invoke('get-version-json', url),
   downloadClient: (versionId, clientUrl) => ipcRenderer.invoke('download-client', versionId, clientUrl),
-  selectJava: () => ipcRenderer.invoke('select-java'),
-  launchJava: (javaPath, versionId, jarPath, username, accessToken) => ipcRenderer.invoke('launch-java', javaPath, versionId, jarPath, username, accessToken),
+
+  // Instances
+  listInstances: () => ipcRenderer.invoke('list-instances'),
+  createInstance: (name, mcVersion, loader) => ipcRenderer.invoke('create-instance', name, mcVersion, loader),
+  getInstance: (instanceId) => ipcRenderer.invoke('get-instance', instanceId),
+  updateInstance: (instanceId, updates) => ipcRenderer.invoke('update-instance', instanceId, updates),
+  getInstancePath: (instanceId) => ipcRenderer.invoke('get-instance-path', instanceId),
 
   // Java manager
   listJavas: () => ipcRenderer.invoke('list-javas'),
@@ -13,18 +18,20 @@ contextBridge.exposeInMainWorld('api', {
   removeJava: (idx) => ipcRenderer.invoke('remove-java', idx),
   selectJavaDialog: () => ipcRenderer.invoke('select-java-dialog'),
 
-  // Microsoft auth (device code flow)
+  // Microsoft auth
   startMsDeviceAuth: (clientId) => ipcRenderer.invoke('start-ms-device-auth', clientId),
   pollMsDeviceToken: () => ipcRenderer.invoke('poll-ms-device-token'),
   listAccounts: () => ipcRenderer.invoke('list-accounts'),
   logoutAccount: (id) => ipcRenderer.invoke('logout-account', id),
 
-  // Modrinth
-  modrinthSearch: (q, limit) => ipcRenderer.invoke('modrinth-search', q, limit),
+  // Modrinth with filters
+  modrinthSearch: (q, filters, limit) => ipcRenderer.invoke('modrinth-search', q, filters, limit),
   modrinthGetProject: (slug) => ipcRenderer.invoke('modrinth-get-project', slug),
   modrinthGetVersion: (versionId) => ipcRenderer.invoke('modrinth-get-version', versionId),
   modrinthDownloadFile: (versionId, fileIndex, instanceId) => ipcRenderer.invoke('modrinth-download-file', versionId, fileIndex, instanceId),
   modrinthDownloadModpack: (versionId, instanceId) => ipcRenderer.invoke('modrinth-download-modpack', versionId, instanceId),
+  modrinthDownloadShader: (versionId, fileIndex, instanceId) => ipcRenderer.invoke('modrinth-download-shader', versionId, fileIndex, instanceId),
+  modrinthDownloadResourcepack: (versionId, fileIndex, instanceId) => ipcRenderer.invoke('modrinth-download-resourcepack', versionId, fileIndex, instanceId),
 
   getUserDataPath: () => ipcRenderer.invoke('get-user-data-path')
 });

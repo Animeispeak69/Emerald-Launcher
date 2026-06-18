@@ -10,13 +10,34 @@ const accountsList = document.getElementById('accountsList');
 const javaList = document.getElementById('javaList');
 const addJavaBtn = document.getElementById('addJavaBtn');
 
+const newInstanceBtn = document.getElementById('newInstanceBtn');
+const instancesList = document.getElementById('instancesList');
+
 const modSearchInput = document.getElementById('modSearchInput');
+const modTypeSelect = document.getElementById('modTypeSelect');
 const modSearchBtn = document.getElementById('modSearchBtn');
 const modResults = document.getElementById('modResults');
 
 let manifest = null;
 let currentType = 'release';
 let selectedVersion = null;
+let selectedInstance = null;
+
+// Filter checkboxes
+const filterLoaders = {
+  fabric: document.getElementById('filterFabric'),
+  forge: document.getElementById('filterForge'),
+  quilt: document.getElementById('filterQuilt')
+};
+
+const filterCategories = {
+  optimization: document.getElementById('filterOptimization'),
+  educational: document.getElementById('filterEducational'),
+  utility: document.getElementById('filterUtility'),
+  adventure: document.getElementById('filterAdventure'),
+  magic: document.getElementById('filterMagic'),
+  technology: document.getElementById('filterTechnology')
+};
 
 async function loadManifest() {
   manifest = await window.api.getVersionManifest();
@@ -44,7 +65,7 @@ function renderVersions() {
   versionsHorizontal.innerHTML = '';
   if (!manifest) return;
   const versions = manifest.versions.filter((v) => v.type === currentType);
-  versions.slice(0).reverse().forEach((v) => {
+  versions.slice(0).reverse().slice(0, 20).forEach((v) => {
     const card = document.createElement('div');
     card.className = 'versionCard';
     card.onclick = () => selectVersion(v);
@@ -59,7 +80,6 @@ async function selectVersion(v) {
   detailBody.innerHTML = 'Loading...';
   const verJson = await window.api.getVersionJson(v.url);
 
-  // Find client download
   let clientUrl = null;
   if (verJson.downloads && verJson.downloads.client && verJson.downloads.client.url) {
     clientUrl = verJson.downloads.client.url;
@@ -89,42 +109,6 @@ async function selectVersion(v) {
       dl.textContent = 'Download client jar';
     };
     html.appendChild(dl);
-
-    const launchBtn = document.createElement('button');
-    launchBtn.textContent = 'Launch (select java & account)';
-    launchBtn.onclick = async () => {
-      // choose account
-      const accounts = await window.api.listAccounts();
-      if (!accounts.length) return alert('No signed-in accounts. Sign in with Microsoft first.');
-      const idx = parseInt(prompt('Enter account index to use (0..' + (accounts.length - 1) + ')'));
-      const account = accounts[idx];
-      if (!account) return alert('Invalid account');
-
-      // check ownership
-      if (!account.entitlements || account.entitlements.length === 0) {
-        const proceed = confirm('This account does not appear to own Minecraft. You can still log in, but launching the game will likely fail. Continue?');
-        if (!proceed) return;
-      }
-
-      // choose java
-      const javas = await window.api.listJavas();
-      if (!javas.length) return alert('No Java runtimes configured. Add one in the Java Runtimes area.');
-      const jidx = parseInt(prompt('Enter java index to use (0..' + (javas.length - 1) + ')'));
-      const javaEntry = javas[jidx];
-      if (!javaEntry) return alert('Invalid java selection');
-
-      // choose jar
-      const jarPath = prompt('Paste full path to downloaded client jar for this version (download first)');
-      if (!jarPath) return alert('Jar required');
-
-      try {
-        await window.api.launchJava(javaEntry.path, verJson.id, jarPath, account.mc_profile ? account.mc_profile.name : 'MCUser', account.mc_token);
-        alert('Launch requested. Check console for Java output.');
-      } catch (e) {
-        alert('Launch failed: ' + e.message);
-      }
-    };
-    html.appendChild(launchBtn);
   }
 
   detailBody.innerHTML = '';
@@ -133,14 +117,11 @@ async function selectVersion(v) {
 
 refreshBtn.onclick = () => loadManifest();
 
-// Microsoft auth flows
+// Microsoft auth
 msLoginBtn.onclick = async () => {
   try {
     const resp = await window.api.startMsDeviceAuth();
-    // resp.message contains instructions for user
     alert('Device sign-in started:\n' + resp.message);
-
-    // start polling in background
     const poll = setInterval(async () => {
       try {
         const result = await window.api.pollMsDeviceToken();
@@ -148,11 +129,9 @@ msLoginBtn.onclick = async () => {
         alert('Signed in. ownsMinecraft=' + result.ownsMinecraft + (result.account.mc_profile ? '\nProfile: ' + result.account.mc_profile.name : ''));
         renderAccounts();
       } catch (e) {
-        // if authorization_pending or slow_down, ignore; otherwise show
-        if (e && e.message && (e.message.includes('authorization_pending') || e.message.includes('authorization_pending') || e.message.includes('slow_down'))) {
+        if (e && e.message && (e.message.includes('authorization_pending') || e.message.includes('slow_down'))) {
           // keep polling
         } else {
-          // stop and show error
           clearInterval(poll);
           alert('Auth error: ' + (e.message || e));
         }
@@ -178,14 +157,14 @@ async function renderAccounts() {
   });
 }
 
-// Java manager UI
+// Java manager
 async function renderJavas() {
   const javas = await window.api.listJavas();
   javaList.innerHTML = '';
   javas.forEach((j, i) => {
     const div = document.createElement('div');
     div.className = 'javaEntry';
-    div.innerHTML = `<span>${i}: ${j.name} — ${j.path}</span> <button data-idx="${i}">Remove</button>`;
+    div.innerHTML = `<span>${i}: ${j.name}</span> <button data-idx="${i}">Remove</button>`;
     div.querySelector('button').onclick = async () => {
       await window.api.removeJava(i);
       renderJavas();
@@ -197,83 +176,143 @@ async function renderJavas() {
 addJavaBtn.onclick = async () => {
   const p = await window.api.selectJavaDialog();
   if (!p) return;
-  const name = prompt('Name for this Java runtime (e.g. Java 17, Java 21):') || p;
+  const name = prompt('Name for this Java runtime (e.g. Java 17):') || p;
   await window.api.addJava(name, p);
   renderJavas();
 };
 
-// Modrinth search and download UI
+// Instance manager
+async function renderInstances() {
+  const instances = await window.api.listInstances();
+  instancesList.innerHTML = '';
+  instances.forEach((inst) => {
+    const div = document.createElement('div');
+    div.className = 'instanceEntry';
+    div.onclick = () => {
+      selectedInstance = inst;
+      div.parentElement.querySelectorAll('.instanceEntry').forEach(e => e.classList.remove('active'));
+      div.classList.add('active');
+    };
+    div.innerHTML = `<strong>${inst.name}</strong><br/><small>${inst.mcVersion} - ${inst.loader}</small>`;
+    instancesList.appendChild(div);
+  });
+}
+
+newInstanceBtn.onclick = async () => {
+  if (!selectedVersion) return alert('Select a Minecraft version first');
+  const loader = prompt('Enter loader (fabric/forge/quilt)');
+  if (!loader) return;
+  const name = prompt('Instance name (optional):') || `${selectedVersion.id}-${loader}`;
+  try {
+    const inst = await window.api.createInstance(name, selectedVersion.id, loader);
+    alert('Instance created: ' + inst.id);
+    renderInstances();
+  } catch (e) {
+    alert('Failed to create instance: ' + e.message);
+  }
+};
+
+// Modrinth search with filters
 modSearchBtn.onclick = async () => {
   const q = modSearchInput.value.trim();
   if (!q) return alert('Enter a search term');
+
+  // Collect selected loaders
+  const selectedLoaders = [];
+  Object.entries(filterLoaders).forEach(([k, el]) => {
+    if (el.checked) selectedLoaders.push(k);
+  });
+
+  // Collect selected categories
+  const selectedCategories = [];
+  Object.entries(filterCategories).forEach(([k, el]) => {
+    if (el.checked) selectedCategories.push(k);
+  });
+
+  const modType = modTypeSelect.value;
+  let searchQuery = q;
+  if (modType !== 'mod') {
+    searchQuery += ` AND (categories:${modType})`;
+  }
+
   modResults.innerHTML = 'Searching...';
   try {
-    const res = await window.api.modrinthSearch(q, 12);
+    const filters = {
+      loaders: selectedLoaders,
+      categories: selectedCategories
+    };
+    const res = await window.api.modrinthSearch(searchQuery, filters, 12);
     modResults.innerHTML = '';
     if (!res.hits || !res.hits.length) return modResults.innerHTML = 'No results';
+
     res.hits.forEach((hit) => {
       const card = document.createElement('div');
       card.className = 'modCard';
-      const title = hit.title || hit.slug || hit.project_id || hit.name || 'Unknown';
+      const title = hit.title || hit.slug || hit.name || 'Unknown';
       const desc = hit.description || '';
-      card.innerHTML = `<strong>${title}</strong><div class="modDesc">${desc}</div>`;
+      const loaders = (hit.loaders || []).join(', ') || 'N/A';
+      const categories = (hit.categories || []).join(', ') || 'N/A';
+      card.innerHTML = `
+        <strong>${title}</strong>
+        <div class="modMeta">Loaders: ${loaders}</div>
+        <div class="modMeta">Categories: ${categories}</div>
+        <div class="modDesc">${desc}</div>
+      `;
       const btn = document.createElement('button');
       btn.textContent = 'Add to instance...';
       btn.onclick = async () => {
-        if (!selectedVersion) return alert('Select a Minecraft version first to target an instance');
-        // ask user which loader they want to use for this instance
-        const loader = prompt('Enter loader to target for this instance (e.g. fabric, forge, quilt)');
-        if (!loader) return;
-        // create instance id
-        const instanceId = `${selectedVersion.id}-${loader}`;
-        // find a modrinth version compatible with selectedVersion.id and loader
-        // hit.project_id or hit.slug? The search hit returns project_id and slug in different fields. Use project_id or slug
-        const slug = hit.slug || hit.project_id || hit.project_id;
+        if (!selectedInstance) return alert('Select an instance first (left sidebar)');
         try {
+          const slug = hit.slug || hit.project_id;
           const project = await window.api.modrinthGetProject(slug);
-          // project.versions is an array of version ids
+
           let chosen = null;
           for (const verId of project.versions || []) {
             try {
               const v = await window.api.modrinthGetVersion(verId);
-              if ((v.game_versions || []).includes(selectedVersion.id) && (v.loaders || []).includes(loader)) {
+              if ((v.game_versions || []).includes(selectedInstance.mcVersion) && (v.loaders || []).includes(selectedInstance.loader)) {
                 chosen = v;
                 break;
               }
-            } catch (e) { /* ignore individual version fetch errors */ }
+            } catch (e) {}
           }
 
           if (!chosen) {
-            const proceed = confirm('No matching mod version found for ' + selectedVersion.id + ' and loader ' + loader + '. Do you want to fall back to the latest compatible loader file if available?');
+            const proceed = confirm(`No matching version for ${selectedInstance.mcVersion}/${selectedInstance.loader}. Fall back to latest?`);
             if (!proceed) return;
-            // fallback: pick first version that supports loader (ignoring game version)
             for (const verId of project.versions || []) {
               try {
                 const v = await window.api.modrinthGetVersion(verId);
-                if ((v.loaders || []).includes(loader)) {
-                  chosen = v; break;
+                if ((v.loaders || []).includes(selectedInstance.loader)) {
+                  chosen = v;
+                  break;
                 }
               } catch (e) {}
             }
           }
 
-          if (!chosen) return alert('No suitable mod version found for that loader');
+          if (!chosen) return alert('No suitable version found');
 
-          // if project is a modpack, offer to download pack
           if (project.project_type === 'modpack') {
-            const ok = confirm('This project is a modpack. Download all referenced mods into the instance mods folder?');
+            const ok = confirm('This is a modpack. Download all mods?');
             if (!ok) return;
-            const downloaded = await window.api.modrinthDownloadModpack(chosen.id, instanceId);
-            alert('Downloaded ' + downloaded.length + ' files into instance: ' + instanceId);
+            const downloaded = await window.api.modrinthDownloadModpack(chosen.id, selectedInstance.id);
+            alert('Downloaded ' + downloaded.length + ' mods into ' + selectedInstance.id);
             return;
           }
 
-          // otherwise download chosen.files[0]
-          const fileIndex = 0;
-          const dest = await window.api.modrinthDownloadFile(chosen.id, fileIndex, instanceId);
-          alert('Downloaded mod to: ' + dest + '\nInstance: ' + instanceId + '\nTip: install the appropriate mod loader for this instance (fabric/forge/quilt) to run mods.');
+          if (modType === 'shader') {
+            const dest = await window.api.modrinthDownloadShader(chosen.id, 0, selectedInstance.id);
+            alert('Shader downloaded to instance: ' + selectedInstance.id);
+          } else if (modType === 'resourcepack') {
+            const dest = await window.api.modrinthDownloadResourcepack(chosen.id, 0, selectedInstance.id);
+            alert('Resource pack downloaded to instance: ' + selectedInstance.id);
+          } else {
+            const dest = await window.api.modrinthDownloadFile(chosen.id, 0, selectedInstance.id);
+            alert('Mod downloaded to instance: ' + selectedInstance.id);
+          }
         } catch (e) {
-          alert('Failed to add mod: ' + (e.message || e));
+          alert('Failed: ' + (e.message || e));
         }
       };
       card.appendChild(btn);
@@ -284,7 +323,8 @@ modSearchBtn.onclick = async () => {
   }
 };
 
-// initial
+// Initial load
 loadManifest();
 renderAccounts();
 renderJavas();
+renderInstances();

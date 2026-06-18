@@ -13,47 +13,95 @@
         <h1>Emerald Launcher</h1>
       </header>
 
-      <section id="controls">
-        <div class="leftControls">
-          <div class="types" id="typeButtons"></div>
-          <div class="actions">
-            <button id="refresh">Refresh versions</button>
-          </div>
-        </div>
-
-        <div class="rightControls">
-          <div id="accountArea">
+      <div id="mainLayout">
+        <aside id="sidebar">
+          <section id="accountArea">
+            <h3>Account</h3>
             <button id="msLogin">Sign in with Microsoft</button>
             <div id="accountsList"></div>
-          </div>
+          </section>
 
-          <div id="javaArea">
-            <h4>Java Runtimes</h4>
+          <section id="javaArea">
+            <h3>Java Runtimes</h3>
             <div id="javaList"></div>
             <button id="addJavaBtn">Add Java...</button>
-          </div>
+          </section>
 
-          <div id="modArea">
-            <h4>Mod Browser (Modrinth)</h4>
-            <input id="modSearchInput" placeholder="Search mods or packs" />
-            <button id="modSearchBtn">Search</button>
-            <div id="modResults"></div>
-          </div>
+          <section id="instanceArea">
+            <h3>Instances</h3>
+            <button id="newInstanceBtn">New Instance...</button>
+            <div id="instancesList"></div>
+          </section>
+        </aside>
 
-        </div>
-      </section>
+        <main id="content">
+          <section id="versionArea">
+            <h2>Minecraft Versions</h2>
+            <div class="actions">
+              <button id="refresh">Refresh versions</button>
+            </div>
+            <div class="types" id="typeButtons"></div>
+            <div id="versionsHorizontal" class="horizontalList"></div>
+          </section>
 
-      <section id="versionArea">
-        <div id="versionsHorizontal" class="horizontalList"></div>
-      </section>
+          <section id="modBrowserArea">
+            <h2>Mod Browser (Modrinth)</h2>
+            <div id="searchSection">
+              <input id="modSearchInput" placeholder="Search mods, shaders, packs..." />
+              <select id="modTypeSelect">
+                <option value="mod">Mods</option>
+                <option value="shader">Shaders</option>
+                <option value="resourcepack">Resource Packs</option>
+                <option value="modpack">Modpacks</option>
+              </select>
+              <button id="modSearchBtn">Search</button>
+            </div>
+            
+            <div id="filtersSection">
+              <h4>Filters</h4>
+              <label>
+                <input type="checkbox" id="filterFabric" value="fabric" /> Fabric
+              </label>
+              <label>
+                <input type="checkbox" id="filterForge" value="forge" /> Forge
+              </label>
+              <label>
+                <input type="checkbox" id="filterQuilt" value="quilt" /> Quilt
+              </label>
+              <br />
+              <label>
+                <input type="checkbox" id="filterOptimization" value="optimization" /> Optimization
+              </label>
+              <label>
+                <input type="checkbox" id="filterEducational" value="educational" /> Educational
+              </label>
+              <label>
+                <input type="checkbox" id="filterUtility" value="utility" /> Utility
+              </label>
+              <br />
+              <label>
+                <input type="checkbox" id="filterAdventure" value="adventure" /> Adventure
+              </label>
+              <label>
+                <input type="checkbox" id="filterMagic" value="magic" /> Magic
+              </label>
+              <label>
+                <input type="checkbox" id="filterTechnology" value="technology" /> Technology
+              </label>
+            </div>
+            
+            <div id="modResults" class="modResultsGrid"></div>
+          </section>
 
-      <section id="details">
-        <h2 id="selectedTitle">No version selected</h2>
-        <div id="detailBody"></div>
-      </section>
+          <section id="details">
+            <h2 id="selectedTitle">No version selected</h2>
+            <div id="detailBody"></div>
+          </section>
+        </main>
+      </div>
 
       <footer>
-        <small>Shows official versions from Mojang. For launching you'll need a valid Minecraft account token and a Java runtime. Mod downloads use Modrinth API.</small>
+        <small>Emerald Launcher — Minecraft versions from Mojang, mods from Modrinth. You must own Minecraft to play.</small>
       </footer>
     </div>
 

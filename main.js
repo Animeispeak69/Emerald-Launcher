@@ -5,14 +5,16 @@ const https = require('https');
 const http = require('http');
 const querystring = require('querystring');
 const { URL } = require('url');
+const { spawn } = require('child_process');
 
 const USER_DATA = path.join(app.getPath('userData'));
 const STORAGE_FILE = path.join(USER_DATA, 'emerald_store.json');
+const INSTANCES_DIR = path.join(USER_DATA, '.emerald', 'instances');
 
 function ensureStorage() {
   if (!fs.existsSync(USER_DATA)) fs.mkdirSync(USER_DATA, { recursive: true });
   if (!fs.existsSync(STORAGE_FILE)) {
-    fs.writeFileSync(STORAGE_FILE, JSON.stringify({ javas: [], accounts: [] }, null, 2));
+    fs.writeFileSync(STORAGE_FILE, JSON.stringify({ javas: [], accounts: [], instances: [] }, null, 2));
   }
 }
 
@@ -27,8 +29,8 @@ function writeStorage(obj) {
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1200,
-    height: 780,
+    width: 1400,
+    height: 900,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -95,7 +97,20 @@ function postJson(url, obj, headers = {}) {
   return fetchJson(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body });
 }
 
-// Version manifest helpers (existing)
+function downloadFile(url, dest) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(dest);
+    https.get(url, (res) => {
+      if (res.statusCode !== 200) return reject(new Error('HTTP ' + res.statusCode));
+      res.pipe(file);
+      file.on('finish', () => file.close(() => resolve(dest)));
+    }).on('error', (err) => {
+      fs.unlink(dest, () => reject(err));
+    });
+  });
+}
+
+// Version manifest helpers
 ipcMain.handle('get-version-manifest', async () => {
   const url = 'https://launchermeta.mojang.com/mc/game/version_manifest.json';
   const manifest = await fetchJson(url);
@@ -110,17 +125,64 @@ ipcMain.handle('download-client', async (_, versionId, clientUrl) => {
   const base = path.join(app.getPath('userData'), '.emerald', 'versions', versionId);
   fs.mkdirSync(base, { recursive: true });
   const dest = path.join(base, `${versionId}.jar`);
+  await downloadFile(clientUrl, dest);
+  return dest;
+});
 
-  return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(dest);
-    https.get(clientUrl, (res) => {
-      if (res.statusCode !== 200) return reject(new Error('HTTP ' + res.statusCode));
-      res.pipe(file);
-      file.on('finish', () => file.close(() => resolve(dest)));
-    }).on('error', (err) => {
-      fs.unlink(dest, () => reject(err));
-    });
-  });
+// Instance management
+ipcMain.handle('list-instances', async () => {
+  const store = readStorage();
+  return store.instances || [];
+});
+
+ipcMain.handle('create-instance', async (_, name, mcVersion, loader) => {
+  const instanceId = `${mcVersion}-${loader}`;
+  const baseDir = path.join(INSTANCES_DIR, instanceId);
+  fs.mkdirSync(baseDir, { recursive: true });
+  fs.mkdirSync(path.join(baseDir, 'mods'), { recursive: true });
+  fs.mkdirSync(path.join(baseDir, 'resourcepacks'), { recursive: true });
+  fs.mkdirSync(path.join(baseDir, 'shaderpacks'), { recursive: true });
+  fs.mkdirSync(path.join(baseDir, 'versions'), { recursive: true });
+  fs.mkdirSync(path.join(baseDir, 'libraries'), { recursive: true });
+  fs.mkdirSync(path.join(baseDir, 'natives'), { recursive: true });
+
+  const config = {
+    id: instanceId,
+    name: name || instanceId,
+    mcVersion,
+    loader,
+    createdAt: new Date().toISOString(),
+    selectedJavaIdx: -1,
+    selectedAccountId: null
+  };
+
+  fs.writeFileSync(path.join(baseDir, 'instance.json'), JSON.stringify(config, null, 2));
+
+  const store = readStorage();
+  store.instances = store.instances || [];
+  store.instances.push(config);
+  writeStorage(store);
+
+  return config;
+});
+
+ipcMain.handle('get-instance', async (_, instanceId) => {
+  const configFile = path.join(INSTANCES_DIR, instanceId, 'instance.json');
+  if (!fs.existsSync(configFile)) throw new Error('Instance not found: ' + instanceId);
+  return JSON.parse(fs.readFileSync(configFile, 'utf8'));
+});
+
+ipcMain.handle('update-instance', async (_, instanceId, updates) => {
+  const configFile = path.join(INSTANCES_DIR, instanceId, 'instance.json');
+  if (!fs.existsSync(configFile)) throw new Error('Instance not found: ' + instanceId);
+  const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+  Object.assign(config, updates);
+  fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
+  return config;
+});
+
+ipcMain.handle('get-instance-path', async (_, instanceId) => {
+  return path.join(INSTANCES_DIR, instanceId);
 });
 
 // Java selection & management
@@ -143,41 +205,23 @@ ipcMain.handle('remove-java', async (_, idx) => {
   return store.javas;
 });
 
-// Simple launcher: improved to handle full classpath is non-trivial. Keep stub but improve args.
-ipcMain.handle('launch-java', async (_, javaPath, versionId, jarPath, username, accessToken) => {
-  if (!fs.existsSync(javaPath)) throw new Error('Java path not found');
-  if (!fs.existsSync(jarPath)) throw new Error('Jar not found');
-  if (!username || !accessToken) throw new Error('Username and access token required to launch');
-
-  const { spawn } = require('child_process');
-  const args = [
-    '-Xmx2G',
-    '-jar',
-    jarPath,
-    '--username', username,
-    '--version', versionId,
-    '--accessToken', accessToken
-  ];
-
-  const child = spawn(javaPath, args, { stdio: 'inherit' });
-
-  child.on('error', (err) => console.error('Launch error:', err));
-
-  return true;
+ipcMain.handle('select-java-dialog', async () => {
+  const res = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'Java Executable', extensions: process.platform === 'win32' ? ['exe'] : ['*'] }]
+  });
+  if (res.canceled || !res.filePaths.length) return null;
+  return res.filePaths[0];
 });
 
 // Microsoft device-code OAuth -> Xbox -> XSTS -> Minecraft token
-// NOTE: This implements a device-code flow for convenience. For production register your own app and client id.
-const DEFAULT_CLIENT_ID = '00000000402b5328'; // public client commonly used by community clients. Replace with your own client id for reliability.
+const DEFAULT_CLIENT_ID = '00000000402b5328';
 
 ipcMain.handle('start-ms-device-auth', async (_, clientId) => {
   clientId = clientId || DEFAULT_CLIENT_ID;
   const url = 'https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode';
   const data = { client_id: clientId, scope: 'XboxLive.signin offline_access openid' };
   const resp = await postForm(url, data);
-  // resp has device_code, user_code, verification_uri, message, expires_in, interval
-  // return resp to renderer and start polling with token endpoint when asked
-  // Store device_code temporarily
   const store = readStorage();
   store._pending_device = { client_id: clientId, device_code: resp.device_code, expires_at: Date.now() + resp.expires_in * 1000 };
   writeStorage(store);
@@ -191,8 +235,6 @@ ipcMain.handle('poll-ms-device-token', async (_, ) => {
   const tokenUrl = 'https://login.microsoftonline.com/consumers/oauth2/v2.0/token';
   try {
     const tok = await postForm(tokenUrl, { grant_type: 'urn:ietf:params:oauth:grant-type:device_code', client_id: pending.client_id, device_code: pending.device_code });
-    // tok contains access_token
-    // Exchange to XBL
     const xbl = await postJson('https://user.auth.xboxlive.com/user/authenticate', {
       Properties: {
         AuthMethod: 'RPS',
@@ -216,7 +258,6 @@ ipcMain.handle('poll-ms-device-token', async (_, ) => {
     const identityToken = `XBL3.0 x=${uhs};${xsts.Token}`;
     const mc = await postJson('https://api.minecraftservices.com/authentication/login_with_xbox', { identityToken });
 
-    // get profile
     let profile = null;
     try {
       profile = await fetchJson('https://api.minecraftservices.com/minecraft/profile', { headers: { Authorization: `Bearer ${mc.access_token}` } });
@@ -237,7 +278,6 @@ ipcMain.handle('poll-ms-device-token', async (_, ) => {
       entitlements: ent.items || []
     };
 
-    // Save account
     store.accounts = store.accounts || [];
     store.accounts.push(account);
     delete store._pending_device;
@@ -245,7 +285,6 @@ ipcMain.handle('poll-ms-device-token', async (_, ) => {
 
     return { account, ownsMinecraft: (ent.items || []).length > 0 };
   } catch (e) {
-    // possible pending/authorization_pending
     throw e;
   }
 });
@@ -262,18 +301,23 @@ ipcMain.handle('logout-account', async (_, id) => {
   return store.accounts;
 });
 
-ipcMain.handle('select-java-dialog', async () => {
-  const res = await dialog.showOpenDialog({
-    properties: ['openFile'],
-    filters: [{ name: 'Java Executable', extensions: process.platform === 'win32' ? ['exe'] : ['*'] }]
-  });
-  if (res.canceled || !res.filePaths.length) return null;
-  return res.filePaths[0];
-});
+// Modrinth integration with filters
+function buildModrinthQuery(query, filters = {}) {
+  let q = `query=${encodeURIComponent(query)}`;
+  if (filters.loaders && filters.loaders.length > 0) {
+    q += `&facets=["loaders:[${filters.loaders.map(l => '"' + l + '"').join(',')}]"]`;
+  }
+  if (filters.categories && filters.categories.length > 0) {
+    q += `&facets=["categories:[${filters.categories.map(c => '"' + c + '"').join(',')}]"]`;
+  }
+  // Modrinth facets: note that multiple facet filters need special formatting
+  // For now, simplified: loaders and categories
+  return q;
+}
 
-// Modrinth integration: search projects, get project, get version, download file
-ipcMain.handle('modrinth-search', async (_, query, limit = 10) => {
-  const url = `https://api.modrinth.com/v2/search?query=${encodeURIComponent(query)}&limit=${limit}`;
+ipcMain.handle('modrinth-search', async (_, query, filters = {}, limit = 12) => {
+  let q = buildModrinthQuery(query, filters);
+  const url = `https://api.modrinth.com/v2/search?${q}&limit=${limit}`;
   return await fetchJson(url);
 });
 
@@ -293,34 +337,22 @@ ipcMain.handle('modrinth-download-file', async (_, versionId, fileIndex, instanc
   const file = ver.files[fileIndex || 0];
   if (!file) throw new Error('File index out of range');
   const url = file.url;
-  const base = path.join(app.getPath('userData'), '.emerald', 'instances', instanceId, 'mods');
+  const base = path.join(INSTANCES_DIR, instanceId, 'mods');
   fs.mkdirSync(base, { recursive: true });
   const dest = path.join(base, file.filename || path.basename(new URL(url).pathname));
-
-  return new Promise((resolve, reject) => {
-    const fileStream = fs.createWriteStream(dest);
-    https.get(url, (res) => {
-      if (res.statusCode !== 200) return reject(new Error('HTTP ' + res.statusCode));
-      res.pipe(fileStream);
-      fileStream.on('finish', () => fileStream.close(() => resolve(dest)));
-    }).on('error', (err) => {
-      fs.unlink(dest, () => reject(err));
-    });
-  });
+  await downloadFile(url, dest);
+  return dest;
 });
 
-// Modrinth: download a modpack (simple implementation) - will download referenced mod versions into instance mods folder
 ipcMain.handle('modrinth-download-modpack', async (_, versionId, instanceId) => {
-  // Version object for modpack contains "files" array with {project_id, version_id}
   const ver = await fetchJson(`https://api.modrinth.com/v2/version/${encodeURIComponent(versionId)}`);
   if (!ver || !ver.files || ver.files.length === 0) throw new Error('Modpack version has no files');
 
-  const base = path.join(app.getPath('userData'), '.emerald', 'instances', instanceId, 'mods');
+  const base = path.join(INSTANCES_DIR, instanceId, 'mods');
   fs.mkdirSync(base, { recursive: true });
 
   const downloaded = [];
   for (const f of ver.files) {
-    // f may have project_id and version_id
     if (!f.project_id || !f.version_id) continue;
     try {
       const v = await fetchJson(`https://api.modrinth.com/v2/version/${encodeURIComponent(f.version_id)}`);
@@ -328,24 +360,40 @@ ipcMain.handle('modrinth-download-modpack', async (_, versionId, instanceId) => 
       if (!fileObj) continue;
       const url = fileObj.url;
       const dest = path.join(base, fileObj.filename || path.basename(new URL(url).pathname));
-      await new Promise((resolve, reject) => {
-        const ws = fs.createWriteStream(dest);
-        https.get(url, (res) => {
-          if (res.statusCode !== 200) return reject(new Error('HTTP ' + res.statusCode));
-          res.pipe(ws);
-          ws.on('finish', () => ws.close(() => resolve(dest)));
-        }).on('error', (err) => {
-          fs.unlink(dest, () => reject(err));
-        });
-      });
+      await downloadFile(url, dest);
       downloaded.push(dest);
     } catch (e) {
-      // ignore individual failures
       console.error('Failed to download mod from modpack:', e.message || e);
     }
   }
 
   return downloaded;
+});
+
+// Modrinth: download shaders
+ipcMain.handle('modrinth-download-shader', async (_, versionId, fileIndex, instanceId) => {
+  const ver = await fetchJson(`https://api.modrinth.com/v2/version/${encodeURIComponent(versionId)}`);
+  if (!ver || !ver.files || ver.files.length === 0) throw new Error('Shader version has no files');
+  const file = ver.files[fileIndex || 0];
+  const url = file.url;
+  const base = path.join(INSTANCES_DIR, instanceId, 'shaderpacks');
+  fs.mkdirSync(base, { recursive: true });
+  const dest = path.join(base, file.filename || path.basename(new URL(url).pathname));
+  await downloadFile(url, dest);
+  return dest;
+});
+
+// Modrinth: download resource pack
+ipcMain.handle('modrinth-download-resourcepack', async (_, versionId, fileIndex, instanceId) => {
+  const ver = await fetchJson(`https://api.modrinth.com/v2/version/${encodeURIComponent(versionId)}`);
+  if (!ver || !ver.files || ver.files.length === 0) throw new Error('Resource pack version has no files');
+  const file = ver.files[fileIndex || 0];
+  const url = file.url;
+  const base = path.join(INSTANCES_DIR, instanceId, 'resourcepacks');
+  fs.mkdirSync(base, { recursive: true });
+  const dest = path.join(base, file.filename || path.basename(new URL(url).pathname));
+  await downloadFile(url, dest);
+  return dest;
 });
 
 // expose userData path

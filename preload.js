@@ -19,5 +19,12 @@ contextBridge.exposeInMainWorld('api', {
   listAccounts: () => ipcRenderer.invoke('list-accounts'),
   logoutAccount: (id) => ipcRenderer.invoke('logout-account', id),
 
+  // Modrinth
+  modrinthSearch: (q, limit) => ipcRenderer.invoke('modrinth-search', q, limit),
+  modrinthGetProject: (slug) => ipcRenderer.invoke('modrinth-get-project', slug),
+  modrinthGetVersion: (versionId) => ipcRenderer.invoke('modrinth-get-version', versionId),
+  modrinthDownloadFile: (versionId, fileIndex, instanceId) => ipcRenderer.invoke('modrinth-download-file', versionId, fileIndex, instanceId),
+  modrinthDownloadModpack: (versionId, instanceId) => ipcRenderer.invoke('modrinth-download-modpack', versionId, instanceId),
+
   getUserDataPath: () => ipcRenderer.invoke('get-user-data-path')
 });

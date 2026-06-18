@@ -271,6 +271,83 @@ ipcMain.handle('select-java-dialog', async () => {
   return res.filePaths[0];
 });
 
+// Modrinth integration: search projects, get project, get version, download file
+ipcMain.handle('modrinth-search', async (_, query, limit = 10) => {
+  const url = `https://api.modrinth.com/v2/search?query=${encodeURIComponent(query)}&limit=${limit}`;
+  return await fetchJson(url);
+});
+
+ipcMain.handle('modrinth-get-project', async (_, slug) => {
+  const url = `https://api.modrinth.com/v2/project/${encodeURIComponent(slug)}`;
+  return await fetchJson(url);
+});
+
+ipcMain.handle('modrinth-get-version', async (_, versionId) => {
+  const url = `https://api.modrinth.com/v2/version/${encodeURIComponent(versionId)}`;
+  return await fetchJson(url);
+});
+
+ipcMain.handle('modrinth-download-file', async (_, versionId, fileIndex, instanceId) => {
+  const ver = await fetchJson(`https://api.modrinth.com/v2/version/${encodeURIComponent(versionId)}`);
+  if (!ver || !ver.files || ver.files.length === 0) throw new Error('Version has no files');
+  const file = ver.files[fileIndex || 0];
+  if (!file) throw new Error('File index out of range');
+  const url = file.url;
+  const base = path.join(app.getPath('userData'), '.emerald', 'instances', instanceId, 'mods');
+  fs.mkdirSync(base, { recursive: true });
+  const dest = path.join(base, file.filename || path.basename(new URL(url).pathname));
+
+  return new Promise((resolve, reject) => {
+    const fileStream = fs.createWriteStream(dest);
+    https.get(url, (res) => {
+      if (res.statusCode !== 200) return reject(new Error('HTTP ' + res.statusCode));
+      res.pipe(fileStream);
+      fileStream.on('finish', () => fileStream.close(() => resolve(dest)));
+    }).on('error', (err) => {
+      fs.unlink(dest, () => reject(err));
+    });
+  });
+});
+
+// Modrinth: download a modpack (simple implementation) - will download referenced mod versions into instance mods folder
+ipcMain.handle('modrinth-download-modpack', async (_, versionId, instanceId) => {
+  // Version object for modpack contains "files" array with {project_id, version_id}
+  const ver = await fetchJson(`https://api.modrinth.com/v2/version/${encodeURIComponent(versionId)}`);
+  if (!ver || !ver.files || ver.files.length === 0) throw new Error('Modpack version has no files');
+
+  const base = path.join(app.getPath('userData'), '.emerald', 'instances', instanceId, 'mods');
+  fs.mkdirSync(base, { recursive: true });
+
+  const downloaded = [];
+  for (const f of ver.files) {
+    // f may have project_id and version_id
+    if (!f.project_id || !f.version_id) continue;
+    try {
+      const v = await fetchJson(`https://api.modrinth.com/v2/version/${encodeURIComponent(f.version_id)}`);
+      const fileObj = v.files && v.files[0];
+      if (!fileObj) continue;
+      const url = fileObj.url;
+      const dest = path.join(base, fileObj.filename || path.basename(new URL(url).pathname));
+      await new Promise((resolve, reject) => {
+        const ws = fs.createWriteStream(dest);
+        https.get(url, (res) => {
+          if (res.statusCode !== 200) return reject(new Error('HTTP ' + res.statusCode));
+          res.pipe(ws);
+          ws.on('finish', () => ws.close(() => resolve(dest)));
+        }).on('error', (err) => {
+          fs.unlink(dest, () => reject(err));
+        });
+      });
+      downloaded.push(dest);
+    } catch (e) {
+      // ignore individual failures
+      console.error('Failed to download mod from modpack:', e.message || e);
+    }
+  }
+
+  return downloaded;
+});
+
 // expose userData path
 ipcMain.handle('get-user-data-path', () => {
   return app.getPath('userData');

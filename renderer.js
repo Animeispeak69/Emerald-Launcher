@@ -10,6 +10,10 @@ const accountsList = document.getElementById('accountsList');
 const javaList = document.getElementById('javaList');
 const addJavaBtn = document.getElementById('addJavaBtn');
 
+const modSearchInput = document.getElementById('modSearchInput');
+const modSearchBtn = document.getElementById('modSearchBtn');
+const modResults = document.getElementById('modResults');
+
 let manifest = null;
 let currentType = 'release';
 let selectedVersion = null;
@@ -196,6 +200,88 @@ addJavaBtn.onclick = async () => {
   const name = prompt('Name for this Java runtime (e.g. Java 17, Java 21):') || p;
   await window.api.addJava(name, p);
   renderJavas();
+};
+
+// Modrinth search and download UI
+modSearchBtn.onclick = async () => {
+  const q = modSearchInput.value.trim();
+  if (!q) return alert('Enter a search term');
+  modResults.innerHTML = 'Searching...';
+  try {
+    const res = await window.api.modrinthSearch(q, 12);
+    modResults.innerHTML = '';
+    if (!res.hits || !res.hits.length) return modResults.innerHTML = 'No results';
+    res.hits.forEach((hit) => {
+      const card = document.createElement('div');
+      card.className = 'modCard';
+      const title = hit.title || hit.slug || hit.project_id || hit.name || 'Unknown';
+      const desc = hit.description || '';
+      card.innerHTML = `<strong>${title}</strong><div class="modDesc">${desc}</div>`;
+      const btn = document.createElement('button');
+      btn.textContent = 'Add to instance...';
+      btn.onclick = async () => {
+        if (!selectedVersion) return alert('Select a Minecraft version first to target an instance');
+        // ask user which loader they want to use for this instance
+        const loader = prompt('Enter loader to target for this instance (e.g. fabric, forge, quilt)');
+        if (!loader) return;
+        // create instance id
+        const instanceId = `${selectedVersion.id}-${loader}`;
+        // find a modrinth version compatible with selectedVersion.id and loader
+        // hit.project_id or hit.slug? The search hit returns project_id and slug in different fields. Use project_id or slug
+        const slug = hit.slug || hit.project_id || hit.project_id;
+        try {
+          const project = await window.api.modrinthGetProject(slug);
+          // project.versions is an array of version ids
+          let chosen = null;
+          for (const verId of project.versions || []) {
+            try {
+              const v = await window.api.modrinthGetVersion(verId);
+              if ((v.game_versions || []).includes(selectedVersion.id) && (v.loaders || []).includes(loader)) {
+                chosen = v;
+                break;
+              }
+            } catch (e) { /* ignore individual version fetch errors */ }
+          }
+
+          if (!chosen) {
+            const proceed = confirm('No matching mod version found for ' + selectedVersion.id + ' and loader ' + loader + '. Do you want to fall back to the latest compatible loader file if available?');
+            if (!proceed) return;
+            // fallback: pick first version that supports loader (ignoring game version)
+            for (const verId of project.versions || []) {
+              try {
+                const v = await window.api.modrinthGetVersion(verId);
+                if ((v.loaders || []).includes(loader)) {
+                  chosen = v; break;
+                }
+              } catch (e) {}
+            }
+          }
+
+          if (!chosen) return alert('No suitable mod version found for that loader');
+
+          // if project is a modpack, offer to download pack
+          if (project.project_type === 'modpack') {
+            const ok = confirm('This project is a modpack. Download all referenced mods into the instance mods folder?');
+            if (!ok) return;
+            const downloaded = await window.api.modrinthDownloadModpack(chosen.id, instanceId);
+            alert('Downloaded ' + downloaded.length + ' files into instance: ' + instanceId);
+            return;
+          }
+
+          // otherwise download chosen.files[0]
+          const fileIndex = 0;
+          const dest = await window.api.modrinthDownloadFile(chosen.id, fileIndex, instanceId);
+          alert('Downloaded mod to: ' + dest + '\nInstance: ' + instanceId + '\nTip: install the appropriate mod loader for this instance (fabric/forge/quilt) to run mods.');
+        } catch (e) {
+          alert('Failed to add mod: ' + (e.message || e));
+        }
+      };
+      card.appendChild(btn);
+      modResults.appendChild(card);
+    });
+  } catch (e) {
+    modResults.innerHTML = 'Search failed: ' + (e.message || e);
+  }
 };
 
 // initial

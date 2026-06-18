@@ -3,33 +3,27 @@
 This repository contains an Electron-based Minecraft Java launcher scaffold called "Emerald Launcher".
 
 What's new in this update
-- Microsoft sign-in (device code flow) implemented in the main process: start device sign-in, poll for token, exchange to Xbox/XSTS, then obtain Minecraft access token.
-- Account storage in user data (emerald_store.json). You can view and log out accounts inside the app.
-- Java runtime manager: add multiple named Java runtimes (Java 7/8/11/17/21/25 etc) and select them for launching.
-- UI improvements: right-side column for accounts and Java runtimes, horizontal (sideways) version list remains.
+- Modrinth integration: search Modrinth projects, pick versions compatible with the selected Minecraft version and mod loader, download mod files into an instance mods folder.
+- Modpack download support (basic): downloads referenced mod versions from a Modrinth modpack version into an instance's mods folder.
+- Instances: mods and modpacks are saved under {userData}/.emerald/instances/{instanceId}/mods. An instanceId is created using the pattern <mc_version>-<loader> (for example, 1.20.1-fabric).
 
-Important security & ownership notes
-- You must sign in with a valid Microsoft account. This code implements the OAuth device-code flow which prompts you to visit a Microsoft URL and paste a code.
-- Owning Minecraft: If the account does not own Minecraft, launching will likely fail. This launcher does NOT bypass purchase/ownership checks — it queries Minecraft services entitlements. You cannot legally play without owning the game.
-- Client ID: The code uses a commonly used public client id by default (00000000402b5328). For production, register your own application in Azure and replace the client id in main.js.
+How it works
+- Select a Minecraft version in the launcher. When adding a mod, you'll be prompted for a target mod loader (fabric/forge/quilt).
+- The app searches the Modrinth API for the project, finds a version that matches your selected Minecraft version and loader (if possible), and downloads the mod jar into the instance's mods folder.
+- For modpacks, the app will download referenced mod versions and place them into the instance mods folder.
 
-Limitations
-- The launcher currently implements a simple JVM -jar launch. It does NOT implement full library, natives, or assets installation required for all versions. For complete compatibility you'll need a full implementation that:
-  - Downloads libraries and native dependencies
-  - Extracts natives to a natives folder
-  - Builds the correct classpath and launches the main class with proper args
-- The Microsoft flow is device-code based for simplicity. You can extend this to PKCE/redirect flows for better UX.
+Why Modrinth?
+- Modrinth provides a public API that allows searching projects and fetching version files without needing an API key. CurseForge requires an API key for many operations — if you want CurseForge integration I can add it, but you'll likely need to provide an API key.
 
-How to use
-1. npm install
-2. npm start
-3. Click "Sign in with Microsoft" and follow the device-code instructions shown.
-4. Add Java runtimes using "Add Java..." (point to the java executable for each version you have installed). Give them a name such as "Java 17".
-5. Download a client jar for a version, then Launch with a selected account and Java runtime.
+Important limitations
+- This only downloads mod files into an instance folder. It does NOT install or configure mod loaders (Fabric/Forge/Quilt). You must install the appropriate mod loader for the instance before launching.
+- The Minecraft launch path is still a simple -jar stub and does not implement full library/native/assets/classpath handling. To reliably run modded instances we need to implement the full launch pipeline and also install the chosen mod loader.
+- Modrinth search/selection uses a simple algorithm (first version matching game version & loader). It may not pick the absolute latest recommended file for every project; you can improve the selection heuristics.
 
-If you want I can:
-- Implement full version launch (libraries + natives + assets) for releases first.
-- Replace device-code with a PKCE redirect flow using a registered app.
-- Add a proper modal UI for login and progress indicators instead of prompts/alerts.
+Next steps I can implement
+1) Auto-install mod loaders (Fabric installer / Forge installer) into an instance and wire that to the full launch pipeline so modded instances run.
+2) Implement full release launcher: download libraries, extract natives, build classpath and args so Minecraft launches correctly.
+3) CurseForge integration (requires API key) to allow searching/downloading mods, modpacks and shaders from CurseForge.
+4) Replace prompt/confirm flows with a proper in-app modal UI and progress bars for downloads.
 
-Again: I will not and cannot help bypass Minecraft ownership checks. You must own the game to play.
+If you want me to proceed, say which of the next steps you'd like me to implement first (I recommend: "Auto-install mod loaders and implement full release launch").

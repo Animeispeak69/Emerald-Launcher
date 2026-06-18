@@ -88,3 +88,8 @@ footer {
 #accountArea { margin-bottom: 12px; }
 .accountEntry { margin-top: 6px; }
 .javaEntry { margin-top: 6px; }
+
+/* Mods */
+#modArea { margin-top: 12px; }
+.modCard { background: rgba(255,255,255,0.03); padding: 8px; border-radius: 6px; margin-top: 8px; }
+.modDesc { opacity: 0.8; font-size: 12px; max-height: 3em; overflow: hidden; }
